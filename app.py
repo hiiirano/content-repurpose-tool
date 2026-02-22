@@ -45,7 +45,7 @@ def extract_json(text: str) -> dict:
 
 def build_all_copy_text(results: dict, selected: list) -> str:
     label_map = {"x": "X（Twitter）", "note": "note",
-                 "instagram": "Instagram", "threads": "Threads"}
+                 "instagram": "Instagram", "threads": "Threads", "facebook": "Facebook"}
     parts = []
     for sns in selected:
         if sns not in results:
@@ -54,6 +54,11 @@ def build_all_copy_text(results: dict, selected: list) -> str:
         if sns == "x":
             for i, post in enumerate(results["x"], 1):
                 parts.append(f"[案{i}] {post}")
+        elif sns == "instagram":
+            parts.append(results["instagram"])
+            if results.get("instagram_image_prompt"):
+                parts.append("\n--- 画像生成プロンプト ---")
+                parts.append(results["instagram_image_prompt"])
         else:
             parts.append(results[sns])
         parts.append("")
@@ -215,26 +220,76 @@ Article:
 
     elif sns == "instagram":
         if ja:
-            return f"""以下の記事を読み、Instagram用キャプションを作成してください。{gais_note}
+            return f"""以下の記事を読み、Instagram用キャプションと画像生成プロンプトを作成してください。{gais_note}
 
-【条件】
-- キャプション本文: 150〜300文字
+【キャプション条件】
+- 150〜300文字
 - 絵文字を適度に使う（1〜2行に1個程度）
 - 保存・シェアしたくなる「学び系」または「共感系」の内容
 - 適切な改行で読みやすく
 - 末尾にハッシュタグ5〜8個（改行して追記）
 
+【画像生成プロンプト条件】
+- Midjourney / DALL-E / Stable Diffusion で使える英語プロンプト
+- 記事の内容を視覚的に表現するイメージ（1〜3文）
+- スタイル指定も含める（例: flat illustration, photorealistic, etc.）
+
+【出力形式（この区切りを厳守）】
+=== CAPTION ===
+（キャプション本文）
+
+=== IMAGE PROMPT ===
+（英語の画像生成プロンプト）
+
 【記事】
 {article[:4000]}"""
         else:
-            return f"""Read the article and write an Instagram caption.{gais_note}
+            return f"""Read the article and write an Instagram caption and image generation prompt.{gais_note}
 
-Rules:
-- Main caption: 100–250 words
+Caption rules:
+- 100–250 words
 - Use emojis naturally (roughly one per paragraph)
 - "Save-worthy" content: key insights or relatable moments
 - Good line breaks
 - Add 5–8 relevant hashtags at the end on a new line
+
+Image prompt rules:
+- English prompt for Midjourney / DALL-E / Stable Diffusion
+- Visually represent the article's theme (1–3 sentences)
+- Include style specification (e.g., flat illustration, photorealistic, etc.)
+
+Output format (follow exactly):
+=== CAPTION ===
+(caption text)
+
+=== IMAGE PROMPT ===
+(English image generation prompt)
+
+Article:
+{article[:4000]}"""
+
+    elif sns == "facebook":
+        if ja:
+            return f"""以下の記事を読み、Facebook投稿文を作成してください。{gais_note}
+
+【条件】
+- 300〜500文字
+- 導入で問いかけ or 共感フックを入れる
+- 要点を3〜5点で整理（箇条書きも可）
+- 読者がシェアしたくなる実務的な内容
+- ハッシュタグは末尾に3〜5個
+
+【記事】
+{article[:4000]}"""
+        else:
+            return f"""Read the article and write a Facebook post.{gais_note}
+
+Rules:
+- 200–400 words
+- Open with a question or empathy hook
+- Summarize key points (3–5 points, bullets OK)
+- Practical, share-worthy content
+- Add 3–5 hashtags at the end
 
 Article:
 {article[:4000]}"""
@@ -305,6 +360,16 @@ def generate_all(article: str, sns_list: list, language: str,
                     p = p[:x_limit - 1] + "…"
                 validated.append(p)
             results["x"] = validated
+        elif sns == "instagram":
+            if "=== IMAGE PROMPT ===" in raw:
+                sections = raw.split("=== IMAGE PROMPT ===")
+                caption = sections[0].replace("=== CAPTION ===", "").strip()
+                image_prompt = sections[1].strip()
+            else:
+                caption = raw.strip()
+                image_prompt = ""
+            results["instagram"] = caption
+            results["instagram_image_prompt"] = image_prompt
         else:
             results[sns] = raw.strip()
     return results
@@ -416,7 +481,12 @@ col1, col2, col3, col4 = st.columns(4)
 with col1:
     use_x = st.checkbox("𝕏  X（Twitter）", value=True)
 with col2:
-    use_note = st.checkbox("📝 note", value=True)
+    if gais_mode:
+        use_facebook = st.checkbox("👥 Facebook", value=True)
+        use_note = False
+    else:
+        use_note = st.checkbox("📝 note", value=True)
+        use_facebook = False
 with col3:
     use_instagram = st.checkbox("📸 Instagram", value=False)
 with col4:
@@ -430,7 +500,8 @@ can_generate = bool(article_text.strip()) and api_ready
 if st.button("🚀 分析して投稿文を生成する", type="primary",
              use_container_width=True, disabled=not can_generate):
     selected = [s for s, v in [("x", use_x), ("note", use_note),
-                                ("instagram", use_instagram), ("threads", use_threads)] if v]
+                                ("facebook", use_facebook), ("instagram", use_instagram),
+                                ("threads", use_threads)] if v]
     if not selected:
         st.error("投稿先を1つ以上選択してください")
     else:
@@ -468,7 +539,7 @@ if "results" in st.session_state:
         st.code(build_all_copy_text(results, selected), language=None)
 
     # タブ
-    label_map = {"x": "𝕏 X", "note": "📝 note",
+    label_map = {"x": "𝕏 X", "note": "📝 note", "facebook": "👥 Facebook",
                  "instagram": "📸 Instagram", "threads": "🧵 Threads"}
     result_tabs = st.tabs(["📊 分析"] + [label_map[s] for s in selected])
 
@@ -552,6 +623,16 @@ if "results" in st.session_state:
             elif sns == "instagram":
                 st.markdown("**Instagram キャプション**")
                 body = results.get("instagram", "")
+                st.caption(f"📏 {len(body)}文字")
+                st.code(body, language=None)
+                image_prompt = results.get("instagram_image_prompt", "")
+                if image_prompt:
+                    st.markdown("**🎨 画像生成プロンプト**")
+                    st.caption("Midjourney / DALL-E / Stable Diffusion などにそのまま貼り付けてください")
+                    st.code(image_prompt, language=None)
+            elif sns == "facebook":
+                st.markdown("**Facebook 投稿文**")
+                body = results.get("facebook", "")
                 st.caption(f"📏 {len(body)}文字")
                 st.code(body, language=None)
             elif sns == "threads":
