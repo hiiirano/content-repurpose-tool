@@ -69,15 +69,43 @@ def build_all_copy_text(results: dict, selected: list) -> str:
 
 def build_analysis_prompt(article: str, language: str, gais_mode: bool) -> str:
     if language == "日本語":
-        gais_instr = """
+        score_rule = """
+【スコアのメリハリ必須ルール】
+- 全員高スコアは禁止。記事との関連が薄いペルソナは素直に低くする（30以下もOK）
+- 高スコア（70以上）にできるのは最大3ペルソナまで
+- 30〜65の中程度スコアを積極的に使い、差をつける
+"""
+        if gais_mode:
+            gais_instr = """
 【GAISモード有効】
-- ペルソナスコアは「自治体DX担当者」「建設・建築業界のDX推進者」「教育・人材育成担当」を重点評価
 - gais_tagsには必ず3〜8個のGAIS関連タグを含める（例: #GAIS #自治体DX #生成AI活用）
-- platform_recommendationのrankingsはX/Facebook/noteを上位に（GAISの公式SNS）
+- platform_recommendationはGAIS導線として official（公式）と community（会員拡散）の2分類で出力
 - トーン方針：協会・実務向け（煽りなし、再現性・現場感重視）
-""" if gais_mode else ""
+"""
+            platform_schema = """\
+  "platform_recommendation": {{
+    "official": {{
+      "top": "X",
+      "reason": "50字以内の理由",
+      "rankings": ["X", "Facebook", "YouTube", "GAIS公式サイト", "メール会員向け"]
+    }},
+    "community": {{
+      "top": "個人X",
+      "reason": "50字以内の理由",
+      "rankings": ["個人X", "個人Facebook", "個人note", "Threads", "Instagram"]
+    }}
+  }},"""
+        else:
+            gais_instr = ""
+            platform_schema = """\
+  "platform_recommendation": {{
+    "top": "note",
+    "reason": "50字以内の理由",
+    "rankings": ["note", "X", "Facebook", "Instagram", "Pinterest"]
+  }},"""
+
         return f"""以下の記事を分析し、**JSONのみ**を出力してください。JSON以外のテキストは不要です。
-{gais_instr}
+{score_rule}{gais_instr}
 【記事】
 {article[:4000]}
 
@@ -89,19 +117,15 @@ def build_analysis_prompt(article: str, language: str, gais_mode: bool) -> str:
     "candidates": ["解説記事", "ニュース", "HowTo", "事例紹介"]
   }},
   "persona_scores": {{
-    "自治体DX担当者": {{ "score": 75, "reason": "30字以内の理由" }},
-    "建設・建築業界のDX推進者": {{ "score": 60, "reason": "30字以内の理由" }},
+    "自治体DX担当者": {{ "score": 55, "reason": "30字以内の理由" }},
+    "建設・建築業界のDX推進者": {{ "score": 40, "reason": "30字以内の理由" }},
     "中小企業経営者（AI活用検討中）": {{ "score": 80, "reason": "30字以内の理由" }},
-    "AI開発者・エンジニア": {{ "score": 45, "reason": "30字以内の理由" }},
+    "AI開発者・エンジニア": {{ "score": 30, "reason": "30字以内の理由" }},
     "AI初心者（一般ビジネスパーソン）": {{ "score": 70, "reason": "30字以内の理由" }},
-    "教育・人材育成担当": {{ "score": 55, "reason": "30字以内の理由" }},
+    "教育・人材育成担当": {{ "score": 45, "reason": "30字以内の理由" }},
     "経営層・意思決定者": {{ "score": 65, "reason": "30字以内の理由" }}
   }},
-  "platform_recommendation": {{
-    "top": "note",
-    "reason": "50字以内の理由",
-    "rankings": ["note", "X", "Facebook", "Instagram", "Pinterest"]
-  }},
+  {platform_schema}
   "content_potential": {{
     "post_count": 5,
     "angles": ["角度1", "角度2", "角度3", "角度4", "角度5"]
@@ -110,19 +134,47 @@ def build_analysis_prompt(article: str, language: str, gais_mode: bool) -> str:
   "risk_flags": []
 }}
 
-制約: scoreは0〜100の整数。rankingsは必ず5要素。gais_tagsは3〜8個。
+制約: scoreは0〜100の整数。post_countとanglesの要素数を必ず一致させる（3〜7本）。gais_tagsは3〜8個。
 risk_flagsに問題があれば: [{{"type": "claim", "severity": "low", "message": "内容", "suggestion": "修正案"}}]"""
 
     else:
-        gais_instr = """
+        score_rule = """
+[Score Variation Rule]
+- Avoid giving everyone high scores. Assign low scores (under 30) to personas with little relevance.
+- Maximum 3 personas can score 70 or above.
+- Use middle scores (30-65) frequently to create contrast.
+"""
+        if gais_mode:
+            gais_instr = """
 [GAIS Mode Active]
-- Prioritize scores for "自治体DX担当者" (Municipal DX), "建設・建築業界のDX推進者" (Construction DX), "教育・人材育成担当" (Education)
 - Include 3-8 GAIS-related tags in gais_tags
-- Rankings: X/Facebook/note first (GAIS official channels)
+- platform_recommendation must use GAIS channels with "official" and "community" sub-objects
 - Tone: Professional, practical, evidence-based (no hype)
-""" if gais_mode else ""
+"""
+            platform_schema = """\
+  "platform_recommendation": {{
+    "official": {{
+      "top": "X",
+      "reason": "Brief reason",
+      "rankings": ["X", "Facebook", "YouTube", "GAIS Official Site", "Member Email"]
+    }},
+    "community": {{
+      "top": "Personal X",
+      "reason": "Brief reason",
+      "rankings": ["Personal X", "Personal Facebook", "Personal note", "Threads", "Instagram"]
+    }}
+  }},"""
+        else:
+            gais_instr = ""
+            platform_schema = """\
+  "platform_recommendation": {{
+    "top": "Medium",
+    "reason": "Brief reason",
+    "rankings": ["Medium", "X", "LinkedIn", "Instagram", "Pinterest"]
+  }},"""
+
         return f"""Analyze the article and output **JSON only**. No other text.
-{gais_instr}
+{score_rule}{gais_instr}
 Article:
 {article[:4000]}
 
@@ -134,19 +186,15 @@ Schema (follow exactly):
     "candidates": ["Explainer", "News", "HowTo", "Case Study"]
   }},
   "persona_scores": {{
-    "自治体DX担当者": {{ "score": 75, "reason": "Brief reason" }},
-    "建設・建築業界のDX推進者": {{ "score": 60, "reason": "Brief reason" }},
+    "自治体DX担当者": {{ "score": 55, "reason": "Brief reason" }},
+    "建設・建築業界のDX推進者": {{ "score": 40, "reason": "Brief reason" }},
     "中小企業経営者（AI活用検討中）": {{ "score": 80, "reason": "Brief reason" }},
-    "AI開発者・エンジニア": {{ "score": 45, "reason": "Brief reason" }},
+    "AI開発者・エンジニア": {{ "score": 30, "reason": "Brief reason" }},
     "AI初心者（一般ビジネスパーソン）": {{ "score": 70, "reason": "Brief reason" }},
-    "教育・人材育成担当": {{ "score": 55, "reason": "Brief reason" }},
+    "教育・人材育成担当": {{ "score": 45, "reason": "Brief reason" }},
     "経営層・意思決定者": {{ "score": 65, "reason": "Brief reason" }}
   }},
-  "platform_recommendation": {{
-    "top": "Medium",
-    "reason": "Brief reason",
-    "rankings": ["Medium", "X", "LinkedIn", "Instagram", "Pinterest"]
-  }},
+  {platform_schema}
   "content_potential": {{
     "post_count": 5,
     "angles": ["Angle 1", "Angle 2", "Angle 3", "Angle 4", "Angle 5"]
@@ -155,7 +203,7 @@ Schema (follow exactly):
   "risk_flags": []
 }}
 
-Constraints: score must be integer 0-100. rankings must have exactly 5 elements. gais_tags: 3-8 items."""
+Constraints: score integer 0-100. post_count must equal the number of angles (3-7). gais_tags: 3-8 items."""
 
 
 def build_prompt(article: str, sns: str, language: str, gais_mode: bool) -> str:
@@ -219,6 +267,7 @@ Article:
 {article[:4000]}"""
 
     elif sns == "instagram":
+        gais_ig = "\n- GAIS context: professional / practical / business-friendly / Japanese business setting. Infographic or diagram style. No sci-fi aesthetics." if gais_mode else ""
         if ja:
             return f"""以下の記事を読み、Instagram用キャプションと画像生成プロンプトを作成してください。{gais_note}
 
@@ -229,17 +278,21 @@ Article:
 - 適切な改行で読みやすく
 - 末尾にハッシュタグ5〜8個（改行して追記）
 
-【画像生成プロンプト条件】
-- Midjourney / DALL-E / Stable Diffusion で使える英語プロンプト
-- 記事の内容を視覚的に表現するイメージ（1〜3文）
-- スタイル指定も含める（例: flat illustration, photorealistic, etc.）
+【画像生成プロンプト条件（必須要素を全て含めること）】
+- 主題（Subject）: 記事テーマを視覚化する被写体・場面
+- シーン/構図（Scene）: 具体的な場所・状況（例: Japanese city hall office, construction site, modern classroom）
+- スタイル（Style）: infographic / flat design / clean corporate / minimal のいずれか
+- カラーパレット（Color）: 記事トーンに合った色指定（例: blue and white corporate palette）
+- no text, no letters（文字なし）
+- aspect ratio 1:1（Instagram正方形）
+- high resolution{gais_ig}
 
 【出力形式（この区切りを厳守）】
 === CAPTION ===
 （キャプション本文）
 
 === IMAGE PROMPT ===
-（英語の画像生成プロンプト）
+（英語の画像生成プロンプト・上記要素を必ず全て含む）
 
 【記事】
 {article[:4000]}"""
@@ -253,17 +306,21 @@ Caption rules:
 - Good line breaks
 - Add 5–8 relevant hashtags at the end on a new line
 
-Image prompt rules:
-- English prompt for Midjourney / DALL-E / Stable Diffusion
-- Visually represent the article's theme (1–3 sentences)
-- Include style specification (e.g., flat illustration, photorealistic, etc.)
+Image prompt rules (include ALL elements):
+- Subject: the main visual representing the article's theme
+- Scene/Composition: specific setting (e.g., Japanese city hall office, construction site, modern classroom)
+- Style: infographic / flat design / clean corporate / minimal
+- Color palette: (e.g., blue and white corporate palette)
+- no text, no letters
+- aspect ratio 1:1 (Instagram square)
+- high resolution{gais_ig}
 
 Output format (follow exactly):
 === CAPTION ===
 (caption text)
 
 === IMAGE PROMPT ===
-(English image generation prompt)
+(English image generation prompt including ALL required elements)
 
 Article:
 {article[:4000]}"""
@@ -375,11 +432,50 @@ def generate_all(article: str, sns_list: list, language: str,
     return results
 
 
+GAIS_CORRECTIONS = {
+    "自治体DX担当者": +10,
+    "建設・建築業界のDX推進者": +8,
+    "教育・人材育成担当": +5,
+    "AI開発者・エンジニア": -5,
+}
+
+
+def apply_gais_corrections(persona_scores: dict) -> dict:
+    corrected = {}
+    for persona, data in persona_scores.items():
+        score = int(data.get("score", 0))
+        delta = GAIS_CORRECTIONS.get(persona, 0)
+        score = max(0, min(100, score + delta))
+        corrected[persona] = {**data, "score": score}
+    return corrected
+
+
 def run_analysis(article: str, language: str, use_claude: bool,
                  gemini_key: str, claude_key: str, gais_mode: bool) -> dict:
     prompt = build_analysis_prompt(article, language, gais_mode)
-    raw = call_claude(prompt, claude_key) if use_claude else call_gemini(prompt, gemini_key)
-    return extract_json(raw)
+    last_error = None
+    for attempt in range(2):
+        try:
+            raw = call_claude(prompt, claude_key) if use_claude else call_gemini(prompt, gemini_key)
+            result = extract_json(raw)
+            if result and "persona_scores" in result:
+                if gais_mode:
+                    result["persona_scores"] = apply_gais_corrections(result["persona_scores"])
+                # Validate post_count / angles consistency
+                potential = result.get("content_potential", {})
+                if potential:
+                    angles = potential.get("angles", [])
+                    angles = angles[:7]
+                    if len(angles) < 3:
+                        angles += [f"角度{i}" for i in range(len(angles) + 1, 4)]
+                    result["content_potential"]["angles"] = angles
+                    result["content_potential"]["post_count"] = len(angles)
+                return result
+        except Exception as e:
+            last_error = e
+    if last_error:
+        raise last_error
+    return {}
 
 
 # ── UI ───────────────────────────────────────────────────────
@@ -391,7 +487,7 @@ st.set_page_config(
 )
 
 st.title("📢 コンテンツリパーパシングツール")
-st.caption("記事・ブログをSNS投稿文に一括変換 ＋ 意思決定支援（誰に・どこで・どう切るか）")
+st.caption("この記事を **①誰に** **②どこで** **③どう切るか** を60秒で判断し、投稿文を一括生成します。")
 
 # ── サイドバー ──
 with st.sidebar:
@@ -558,6 +654,14 @@ if "results" in st.session_state:
             if persona_scores:
                 sorted_p = sorted(persona_scores.items(),
                                   key=lambda x: x[1].get("score", 0), reverse=True)
+                # Primary Targets（上位2名）
+                primary = sorted_p[:2]
+                st.markdown("**🎯 Primary Targets**")
+                for rank, (persona, data) in enumerate(primary, 1):
+                    score = max(0, min(100, int(data.get("score", 0))))
+                    st.markdown(f"**{rank}. {persona}** — {score}点　*{data.get('reason', '')}*")
+                st.divider()
+                # 全ペルソナ
                 for persona, data in sorted_p:
                     score = max(0, min(100, int(data.get("score", 0))))
                     reason = data.get("reason", "")
@@ -572,11 +676,27 @@ if "results" in st.session_state:
             st.markdown("### **どこで** 出すべきか")
             platform = analysis.get("platform_recommendation", {})
             if platform:
-                st.success(f"⭐ **{platform.get('top', '?')}** が最適")
-                st.caption(platform.get("reason", ""))
-                rankings = platform.get("rankings", [])
-                if rankings:
-                    st.markdown("推奨順位: " + " ＞ ".join(rankings[:5]))
+                if "official" in platform:
+                    # GAISモード: official/community 2分類
+                    official = platform.get("official", {})
+                    community = platform.get("community", {})
+                    col_off, col_com = st.columns(2)
+                    with col_off:
+                        st.success(f"🏛️ **公式導線** トップ: **{official.get('top', '?')}**")
+                        st.caption(official.get("reason", ""))
+                        if official.get("rankings"):
+                            st.markdown(" ＞ ".join(official["rankings"][:5]))
+                    with col_com:
+                        st.info(f"👥 **会員拡散** トップ: **{community.get('top', '?')}**")
+                        st.caption(community.get("reason", ""))
+                        if community.get("rankings"):
+                            st.markdown(" ＞ ".join(community["rankings"][:5]))
+                else:
+                    st.success(f"⭐ **{platform.get('top', '?')}** が最適")
+                    st.caption(platform.get("reason", ""))
+                    rankings = platform.get("rankings", [])
+                    if rankings:
+                        st.markdown("推奨順位: " + " ＞ ".join(rankings[:5]))
 
             st.divider()
             st.markdown("### **どう切る** べきか（ネタ分割プラン）")
