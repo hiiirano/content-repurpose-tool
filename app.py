@@ -433,8 +433,8 @@ def generate_all(article: str, sns_list: list, language: str,
 
 
 GAIS_CORRECTIONS = {
-    "自治体DX担当者": +10,
-    "建設・建築業界のDX推進者": +8,
+    "自治体DX担当者": +15,
+    "建設・建築業界のDX推進者": +13,
     "教育・人材育成担当": +5,
     "AI開発者・エンジニア": -5,
 }
@@ -468,6 +468,11 @@ def run_analysis(article: str, language: str, use_claude: bool,
                     angles = angles[:7]
                     if len(angles) < 3:
                         angles += [f"角度{i}" for i in range(len(angles) + 1, 4)]
+                    # GAISモード: 協会向けまとめ角度を固定追加
+                    if gais_mode:
+                        gais_angle = "GAIS会員向け：今週の生成AIトレンドまとめ（WG共有・イベント資料転用可）"
+                        if gais_angle not in angles and len(angles) < 7:
+                            angles.append(gais_angle)
                     result["content_potential"]["angles"] = angles
                     result["content_potential"]["post_count"] = len(angles)
                 return result
